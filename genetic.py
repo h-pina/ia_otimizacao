@@ -1,26 +1,42 @@
 import numpy as np
 import random
 import math
+import time
 
-
+DEBUG = False
 POPSIZE  = 100
 GLOBAL_MIN = -106.764537
 GLOBAL_MAX = 170
 PRECISION_THRESHOLD = 0.05
 
-#Definicao da funcao f(x,y)
-def f(x,y):
-    return ( math.sin(x) * math.exp( math.pow(1-math.cos(y),2) ) ) + ( math.cos(y) * math.exp( math.pow(1-math.sin(x),2) ) ) + math.pow((x-y),2) 
+def debug(msg):
+    print("[DEBUG] - ", end="")
+    print(msg)
+
+def f(x11,x12,x21,x22,x31,x32):#TODO: Change
+    return (130*x11 + 300*x12 + 140*x21 + 120*x22 + 150*x31 + 270*x32)
+
+def isWithinRestrictions(x11,x12,x21,x22,x31,x32):
+    offerRestrictions = all([x11 + x12 <= 4330, x21 + x22 <= 2150, x31 + x32 <= 7820])
+    demandRestrictions = all([x11 + x21 + x31 == 4210, x12 + x22 + x32 ==  6910])
+    nonZeroRestriction = all(x>0 for x in (x11,x12,x21,x22,x31,x32))
+    return offerRestrictions and demandRestrictions and nonZeroRestriction
 
 #Geracao da populacao inicial, partindo de numeros aleatorios dentro do range [-10,10]
 def generateInitialPopulation(popSize, upperLimit, lowerLimit):
-    population = []
-    for i in range(popSize):
-        x = random.uniform(lowerLimit,upperLimit)
-        y = random.uniform(lowerLimit,upperLimit)
-        # cada elemento é representado por uma array [x,y,z,rank], o valor inicial do rank é de -1
-        population.append( [x,y,f(x,y), -1] )
-    return population
+    x = []
+    done = False
+    while not done:
+        localX = []
+        localX.append(random.uniform(lowerLimit,upperLimit))
+        localX.append(random.uniform(lowerLimit,upperLimit))
+        localX.append(random.uniform(lowerLimit,upperLimit))
+        localX.append(random.uniform(lowerLimit,upperLimit))
+        localX.append(random.uniform(lowerLimit,upperLimit))
+        localX.append(random.uniform(lowerLimit,upperLimit))
+        if(isWithinRestrictions(*localX)):
+            return localX
+    return x
 
 #Aplica o ranking linear
 def linearRanking(population,maxRank,minRank):
@@ -46,7 +62,6 @@ def linearRanking(population,maxRank,minRank):
         accSum+=normalizedRank
         population[j][3] = accSum    
     return population 
-
 
 #Com o preenchimento dos ranks na funcao linearRank, rodar a roleta e selecionar
 #o numero de membros definido por membersToSelect
@@ -82,6 +97,8 @@ def getNewPopulation(population):
         child1, child2 = crossover(parent1,parent2)
         child1, child2 = mutate(child1, child2)
         newPop.extend([parent1,parent2,child1,child2])
+        #restricoes
+        #gerar novos
     return newPop
 
 #Validacao da nova populacao
@@ -93,20 +110,24 @@ def checkForResult(group, expectedValue, threshold):
     return False, []
 
 if __name__ == "__main__":
-    #inicializacao das variaveis
-    population = generateInitialPopulation(POPSIZE, 10,-10)
-    done = False
-    result = []
-    generationCount = 0
+    # #inicializacao das variaveis
+    # poplation = generateInitialPopulation(POPSIZE, 10,-10)
+    # done = False
+    # result = []
+    # generationCount = 0
 
-    #loop principal
-    while done is False:
-        generationCount+=1
-        population = linearRanking(population,100,0)
-        selectedMembers = roullete(population,50)
-        population = getNewPopulation(selectedMembers)
-        done, result = checkForResult(population, GLOBAL_MIN, PRECISION_THRESHOLD)
+    # #loop principal
+    # while done is False:
+    #     generationCount+=1
+    #     population = linearRanking(population,100,0)
+    #     selectedMembers = roullete(population,50)
+    #     population = getNewPopulation(selectedMembers)
+    #     done, result = checkForResult(population, GLOBAL_MIN, PRECISION_THRESHOLD)
 
-    #Resultados
-    print(f'Coordenadas Encontradas - x: {result[0]} | y: {result[1]}')
-    print(f'Numero de geracoes {generationCount}')
+    # #Resultados
+    # print(f'Coordenadas Encontradas - x: {result[0]} | y: {result[1]}')
+    # print(f'Numero de geracoes {generationCount}')
+    st = time.time()
+    debug(generateInitialPopulation(100,0,10000))
+    debug(time.time() - st)
+
