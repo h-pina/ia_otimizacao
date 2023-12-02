@@ -8,126 +8,163 @@ POPSIZE  = 100
 GLOBAL_MIN = -106.764537
 GLOBAL_MAX = 170
 PRECISION_THRESHOLD = 0.05
+actualMinimalValue = 50000000
+
+
+#Remap x to array form
+
+
 
 def debug(msg):
     print("[DEBUG] - ", end="")
     print(msg)
 
-def f(x11,x12,x21,x22,x31,x32):#TODO: Change
-    return (130*x11 + 300*x12 + 140*x21 + 120*x22 + 150*x31 + 270*x32)
+#Not sure if I`ll use it`
+def matrixForm(x):
+    return x.reshape(3,2)
 
-def isWithinRestrictions(x11,x12,x21,x22,x31,x32):
-    offerRestrictions = all([x11 + x12 <= 4330, x21 + x22 <= 2150, x31 + x32 <= 7820])
-    demandRestrictions = all([x11 + x21 + x31 == 4210, x12 + x22 + x32 ==  6910])
-    nonZeroRestriction = all(x>0 for x in (x11,x12,x21,x22,x31,x32))
-    return offerRestrictions and demandRestrictions and nonZeroRestriction
+def arrayForm(x):
+    return x.ravel()
+
+def f(x):#TODO: Change
+    return (130*x[0] + 300*x[1] + 140*x[2] + 120*x[3] + 150*x[4] + 270*x[5])
+
+def applyPenalties(indiv):
+    x = matrixForm(indiv['genome'])
+    offerRestrictions = [x[0][0] + x[0][1] <= 4330, 
+                         x[1][0] + x[1][1] <= 2150, 
+                         x[2][0] + x[2][0] <= 7820]
+    demandRestrictions = [x[0][0] + x[1][0] + x[2][0] == 4210, 
+                          x[0][1] + x[1][1] + x[2][1] ==  6910]
+    nonZeroRestriction =  all([el>0 for el in indiv['genome']])
+    
+    penaltiesCount = 0
+    for restriction in offerRestrictions:
+        if restriction == False:
+            penaltiesCount+=1
+    for restriction in demandRestrictions:
+        if restriction == False:
+            penaltiesCount+=1
+    if nonZeroRestriction == False:
+        penaltiesCount+=1
+    return penaltiesCount
+        
+def adaptToDemandRestriction(indiv):
+    a = [indiv[el] for el in range(len(indiv)) if el%2 == 0]
+    if(sum(a) != 4210):
+        indexOfMinimalElement = a.index(min(a))
+        a[indexOfMinimalElement] += 4210 - sum(a)
+    b = [ indiv[el] for el in range(len(indiv)) if el%2 != 0]
+    if(sum(b) != 6910):
+        indexOfMinimalElement = b.index(min(b))
+        b[indexOfMinimalElement] += 6910 - sum(b)
+    
+    return np.array([a[0],b[0],a[1],b[1],a[2],b[2]])
 
 #Geracao da populacao inicial, partindo de numeros aleatorios dentro do range [-10,10]
-def generateInitialPopulation(popSize, upperLimit, lowerLimit):
-    x = []
-    done = False
-    while not done:
-        localX = []
-        localX.append(random.uniform(lowerLimit,upperLimit))
-        localX.append(random.uniform(lowerLimit,upperLimit))
-        localX.append(random.uniform(lowerLimit,upperLimit))
-        localX.append(random.uniform(lowerLimit,upperLimit))
-        localX.append(random.uniform(lowerLimit,upperLimit))
-        localX.append(random.uniform(lowerLimit,upperLimit))
-        if(isWithinRestrictions(*localX)):
-            return localX
-    return x
+def generateInitialPopulation(popSize):
+    population = []
+    for _ in range(popSize):
+        l = [random.random(),random.random(),random.random()]
+        l = [l[0]/sum(l),l[1]/sum(l),l[2]/sum(l)]
+        genome = np.array([ l[0]*4210, l[0]*6910, l[1]*4210, l[1]*6910, l[2]*4210, l[2]*6910 ])
+        individual = {
+            'genome': genome,  
+            'fitness': -1,
+            'rank': -1,
+            'penaltiesApplied': -1
+        }
+        
+        population.append(individual)
+    population = calculateFitnessValues(population)
+    return population
 
-#Aplica o ranking linear
-def linearRanking(population,maxRank,minRank):
-    population.sort(key= lambda x : x[2]) # ordenacao da populacao
-    ranks = [] 
 
-    #inicializacao das variaveis para o rankeamento
-    N = len(population)
-    min = minRank
-    max = maxRank
-    totalSum = 0
+def calculateFitnessValues(population):
+    for individual in population:
+        individual['fitness'] = f(individual['genome']) 
+        individual['penaltiesApplied'] = applyPenalties(individual)
+    return population
 
-    #calculo dos ranks (nesse caso, de 0 a 100)
-    for index in range(len(population)): 
-        value = min + (max - min)/(N-1) * (N-index)
-        totalSum  += value
-        ranks.append(value)
-    accSum = 0
+def selectIndividuals(population):
+    sortedPopulation = sorted(population, key=lambda x: (x['penaltiesApplied'],x['fitness']),)
+    
+    sumOfRanks = ( len(sortedPopulation) * (1 + len(sortedPopulation)) ) / 2
+    rankPosition = 1
+    pieSection = 0
+    for indiv in sortedPopulation:
+        pieSection += rankPosition/sumOfRanks
+        indiv['rank'] = pieSection
+        rankPosition+=1
+    
+    selectedIndividuals = []
+    for _ in range(len(sortedPopulation)//2):
+        thresholdForSelection = random.random()
+        selectedIndividual = next((x for x in sortedPopulation if x['rank'] > thresholdForSelection))
+        selectedIndividuals.append(selectedIndividual)
+    
+    return selectedIndividuals
 
-    #normalizacao
-    for j in range(len(ranks)): 
-        normalizedRank = ranks[j]/totalSum
-        accSum+=normalizedRank
-        population[j][3] = accSum    
-    return population 
+def crossover(parents):
+    willCrossover = (random.random() < 0.7)
+    childrenGenomes = parents.copy()
+    #CrossOverLogic
+    if willCrossover:
+        for _ in range(3):
+            elementToSwitch = random.randint(0,len(childrenGenomes[0])-1)
+            childrenGenomes[0][elementToSwitch] = childrenGenomes[1][elementToSwitch]
+    return childrenGenomes
 
-#Com o preenchimento dos ranks na funcao linearRank, rodar a roleta e selecionar
-#o numero de membros definido por membersToSelect
-def roullete(population,membersToSelect):
-    selected = []
-    for i in range(membersToSelect):
-        num = random.random()
-        selected.append(next(e for e in population if e[3]>num))
-    return [ [s[0],s[1],s[2],-1] for s in selected]
+def mutate(childrenGenomes):
+    willMutate = (random.random() < 0.1)
+    mutatedChildrenGenome = childrenGenomes
+    if not willMutate:
+        return childrenGenomes
+    elementToMutate = random.randint(0,len(childrenGenomes[0])-1)
+    mutatedChildrenGenome[0][elementToMutate] -= childrenGenomes[0][elementToMutate]*0.05
+    mutatedChildrenGenome[1][elementToMutate] -= childrenGenomes[0][elementToMutate]*0.05
+    return [adaptToDemandRestriction(child) for child in mutatedChildrenGenome]
 
-#realizar crossover
-def crossover(parent1, parent2):
-    factor = random.random()
-    if factor > 0.7:
-        return [parent1[0],parent1[1],-1], [parent2[0],parent2[1]]
-    return [parent1[0], parent2[1],-1], [ parent2[0], parent1[1]]
+def mutateAndCrossover(si):
+    for index in range(0,len(si),2):
+        parentGenomes = [ si[index]['genome'] , si[index + 1]['genome'] ]
+        crossedOverChildrenGenomes = crossover(parentGenomes)
+        mutatedChildrenGenomes = mutate(crossedOverChildrenGenomes)
 
-#mutacao dos filhos (filhos podem ser os proprios pais, quando nao houver crossover)
-def mutate(child1, child2):
-    multiplier = random.choice([1,-1])
-    child1 = [child1[0] + multiplier*random.uniform(0,2),child1[1] + multiplier*random.uniform(0,2)]
-    child2 = [child2[0] + multiplier*random.uniform(0,2),child2[1] + multiplier*random.uniform(0,2)]
-    child1.extend([f(child1[0],child1[1]),-1])
-    child2.extend([f(child2[0],child2[1]),-1])
-    return child1, child2
+        for childGenome in mutatedChildrenGenomes:
+            child = {
+            'genome': childGenome,
+            'fitness': -1,
+            'rank': -1,
+            'penaltiesApplied': -1
+            }
+            si.append(child)
+    return si
 
-#Obtencao das novas populacoes, aplicando crossover e mutacoes apos a roleta
-def getNewPopulation(population):
-    newPop = []
-    for i in range(0,len(population), 2):
-        parent1 = population[i]
-        parent2 = population[i+1]        
-        child1, child2 = crossover(parent1,parent2)
-        child1, child2 = mutate(child1, child2)
-        newPop.extend([parent1,parent2,child1,child2])
-        #restricoes
-        #gerar novos
-    return newPop
+def generateNextPopulation(previousPopulation):
+    selectedIndividuals = selectIndividuals(previousPopulation)
+    newPopulation = mutateAndCrossover(selectedIndividuals)
+    newPopulation = calculateFitnessValues(newPopulation)
+    fitnessData = sorted([indiv['penaltiesApplied'] for indiv in newPopulation]) # change
+    return (newPopulation, fitnessData)
 
-#Validacao da nova populacao
-def checkForResult(group, expectedValue, threshold):
-    acceptedValueMargins = [expectedValue-threshold, expectedValue+threshold]
-    for g in group:
-        if g[2] > acceptedValueMargins[0] and g[2]<acceptedValueMargins[1]:
-            return True, g
-    return False, []
 
-if __name__ == "__main__":
-    # #inicializacao das variaveis
-    # poplation = generateInitialPopulation(POPSIZE, 10,-10)
-    # done = False
-    # result = []
-    # generationCount = 0
+def checkForResult(data):
+    for fd in data:
+        if fd == 0:
+            return True
+    return False
 
-    # #loop principal
-    # while done is False:
-    #     generationCount+=1
-    #     population = linearRanking(population,100,0)
-    #     selectedMembers = roullete(population,50)
-    #     population = getNewPopulation(selectedMembers)
-    #     done, result = checkForResult(population, GLOBAL_MIN, PRECISION_THRESHOLD)
+def run():
+    maxGenerations = 2000
+    converged = False
+    population = generateInitialPopulation(100)
+    generation = 0
+    while not converged:
+        population, fitnessData = generateNextPopulation(population)
+        converged = checkForResult(fitnessData)
+        debug(fitnessData)        
+        generation+=1 
+        debug(generation)
 
-    # #Resultados
-    # print(f'Coordenadas Encontradas - x: {result[0]} | y: {result[1]}')
-    # print(f'Numero de geracoes {generationCount}')
-    st = time.time()
-    debug(generateInitialPopulation(100,0,10000))
-    debug(time.time() - st)
-
+run()
