@@ -1,20 +1,14 @@
 import numpy as np
 import random
-import math
-import time
-
-
-
-
-def debug(msg):
-    print("[DEBUG] - ", end="")
-    print(msg)
+import matplotlib.pyplot as plt
 
 class Genetic():
 
-    def __init__(self):
+    def __init__(self, maxGenerations, populationSize):
         self.actualMinValue = np.inf
         self.globalCount = 0
+        self.maxGenerations = maxGenerations
+        self.populationSize = populationSize
 
     def matrixForm(self,x):
         return x.reshape(3,2)
@@ -22,7 +16,7 @@ class Genetic():
     def arrayForm(self,x):
         return x.ravel()
 
-    def f(self,x):#TODO: Change
+    def f(self,x):
         return (130*x[0] + 300*x[1] + 140*x[2] + 120*x[3] + 150*x[4] + 270*x[5])
 
     def applyPenalties(self,indiv):
@@ -57,10 +51,9 @@ class Genetic():
         
         return np.array([a[0],b[0],a[1],b[1],a[2],b[2]])
 
-    #Geracao da populacao inicial, partindo de numeros aleatorios dentro do range [-10,10]
-    def generateInitialPopulation(self,popSize):
+    def generateInitialPopulation(self):
         population = []
-        for _ in range(popSize):
+        for _ in range(self.populationSize):
             l = [random.random(),random.random(),random.random()]
             l = [l[0]/sum(l),l[1]/sum(l),l[2]/sum(l)]
             genome = np.array([ l[0]*4210, l[0]*6910, l[1]*4210, l[1]*6910, l[2]*4210, l[2]*6910 ])
@@ -74,7 +67,6 @@ class Genetic():
             population.append(individual)
         population = self.calculateFitnessValues(population)
         return population
-
 
     def calculateFitnessValues(self,population):
         for individual in population:
@@ -141,36 +133,46 @@ class Genetic():
         selectedIndividuals = self.selectIndividuals(previousPopulation)
         newPopulation = self.mutateAndCrossover(selectedIndividuals)
         newPopulation = self.calculateFitnessValues(newPopulation)
-        fitnessData = sorted([(indiv['penaltiesApplied'], indiv['fitness'] ) for indiv in newPopulation]) # change
-        return (newPopulation, fitnessData)
+        return newPopulation
 
 
-    def checkForResult(self,fitnessData):
-        for fd in fitnessData:
-            penaltiesApplied,fitnessValue = fd
-            if(penaltiesApplied == 0):
-                if fitnessValue > (self.actualMinValue*0.99) and fitnessValue < (self.actualMinValue*1.01):
+    def checkForResult(self,population):
+        for indiv in population:
+            if(indiv['penaltiesApplied'] == 0):
+                if indiv['fitness'] > self.actualMinValue*0.995 and indiv['fitness'] < self.actualMinValue*1.005:
                     self.globalCount+=1
-                elif fitnessValue < self.actualMinValue:
-                    self.actualMinValue = fitnessValue
+                elif indiv['fitness'] < self.actualMinValue:
+                    self.actualMinValue = indiv['fitness']
                     self.globalCount = 0
                 
-                if self.globalCount == 3:
-                    return (True, self.actualMinValue)
-            
-        return (False, None)
+                if self.globalCount == 4:
+                    return (True,indiv)
+        return (False,None)
 
     def run(self):
-        maxGenerations = 2000
         converged = False
-        population = self.generateInitialPopulation(100)
+        population = self.generateInitialPopulation()
         generation = 0
-        while not converged and generation < maxGenerations:
-            population, fitnessData = self.generateNextPopulation(population)
-            converged, answer = self.checkForResult(fitnessData)      
+        while not converged and generation < self.maxGenerations:
+            population = self.generateNextPopulation(population)
+            converged,answer = self.checkForResult(population)  
             generation+=1 
-        debug(answer)
+        if answer:
+            return answer
+        return None
+        
+#Instanciando a classe
+g = Genetic(maxGenerations=10000,populationSize=100)
 
+#O algoritmo será executado 25 vezes, e o menor valor encontrado 
+#será admitido como solução.
+results = []
+for _ in range(25):
+    results.append(g.run())
 
-g = Genetic()
-g.run()
+result = min(results, key=lambda x: x['fitness']  )
+
+#Apresentação das soluções encontradas
+print(f'Minimal Fitness Found: {result["fitness"]}')
+print("Input Matrix:")
+print(g.matrixForm(result['genome']))
